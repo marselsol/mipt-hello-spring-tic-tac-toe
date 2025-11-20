@@ -1,46 +1,42 @@
 package com.example.mipt_hello_spring_tic_tac_toe;
 
+import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.List;
 
-record CreateMessageRequest(String content, String username) {}
-
 @RestController
+@RequiredArgsConstructor
 @RequestMapping("/messages")
 public class MessageController {
-    private final MessageService service;
-
-    public MessageController(MessageService service) {
-        this.service = service;
-    }
+    private final MessageService messageService;
 
     @GetMapping("/optimized")
     public List<Message> getMessagesOptimized() {
-        return service.getLatestMessagesOptimized();
+        return messageService.getLatestMessagesOptimized();
     }
 
     @GetMapping("/nplus1")
     public List<Message> getMessagesNPlus1() {
-        return service.getLatestMessagesNPlus1();
+        return messageService.getLatestMessagesNPlus1();
     }
 
     @PostMapping
     @ResponseStatus(HttpStatus.CREATED)
     public Message createMessage(@RequestBody CreateMessageRequest request) {
-        String username = (request.username() == null || request.username().trim().isEmpty())
+        String username = (request.getUsername() == null || request.getUsername().trim().isEmpty())
                 ? "Anonymous"
-                : request.username();
+                : request.getUsername();
 
-        return service.saveMessage(request.content(), username);
+        return messageService.saveMessage(request.getContent(), username);
     }
 
     @GetMapping("/fail/{id}")
     public ResponseEntity<?> getMessageToFail(@PathVariable Long id) {
         try {
-            Message message = service.getMessageToFail(id);
+            Message message = messageService.getMessageToFail(id);
             return ResponseEntity.ok(message);
 
         } catch (Exception e) {
