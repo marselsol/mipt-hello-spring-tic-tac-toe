@@ -1,6 +1,8 @@
 package com.example.mipt_hello_spring_tic_tac_toe;
 
 import jakarta.transaction.Transactional;
+import io.micrometer.core.instrument.Counter;
+import io.micrometer.core.instrument.MeterRegistry;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 
@@ -11,10 +13,18 @@ public class MessageService {
 
     private final MessageRepository messageRepository;
     private final UserRepository userRepository;
+    private final Counter messagesCreatedCounter;
 
-    public MessageService(MessageRepository messageRepository, UserRepository userRepository) {
+    public MessageService(
+            MessageRepository messageRepository,
+            UserRepository userRepository,
+            MeterRegistry meterRegistry
+    ) {
         this.messageRepository = messageRepository;
         this.userRepository = userRepository;
+        this.messagesCreatedCounter = Counter.builder("messages_created_total")
+                .description("Number of messages successfully saved")
+                .register(meterRegistry);
         initializeSampleData();
     }
 
@@ -34,7 +44,9 @@ public class MessageService {
                 .orElseGet(() -> userRepository.save(new User(username)));
 
         Message message = new Message(content, author);
-        return messageRepository.save(message);
+        Message saved = messageRepository.save(message);
+        messagesCreatedCounter.increment();
+        return saved;
     }
 
     @Transactional

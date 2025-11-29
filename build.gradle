@@ -1,0 +1,142 @@
+plugins {
+    id 'java'
+    id 'org.springframework.boot' version '3.5.7'
+    id 'io.spring.dependency-management' version '1.1.6'
+}
+
+group = 'com.example'
+version = '0.0.1-SNAPSHOT'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(21)
+    }
+}
+
+// Centralize versions (including JPA/Hibernate-related)
+ext.versions = [
+        springBoot: '3.5.7',
+        hibernate : '6.6.5.Final',
+        h2        : '2.3.232',
+        lombok    : '1.18.34'
+]
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // JPA / Hibernate stack (grouped together)
+    implementation "org.springframework.boot:spring-boot-starter-data-jpa"
+    // Explicit hibernate-core version to demonstrate version variable usage
+    implementation "org.hibernate.orm:hibernate-core:${versions.hibernate}"
+    runtimeOnly   'org.postgresql:postgresql'
+
+    // Observability
+    implementation 'org.springframework.boot:spring-boot-starter-actuator'
+    implementation 'io.micrometer:micrometer-registry-prometheus'
+    implementation 'net.logstash.logback:logstash-logback-encoder:7.4'
+
+    // Web
+    implementation 'org.springframework.boot:spring-boot-starter-web'
+
+    // Lombok (optional)
+    compileOnly     "org.projectlombok:lombok:${versions.lombok}"
+    annotationProcessor "org.projectlombok:lombok:${versions.lombok}"
+
+    // Tests
+    testImplementation 'org.springframework.boot:spring-boot-starter-test'
+    testRuntimeOnly    "com.h2database:h2:${versions.h2}"
+}
+
+tasks.named('test') {
+    useJUnitPlatform()
+}
+
+springBoot {
+    // Explicit main class to ensure bootRun works
+    mainClass = 'com.example.mipt_hello_spring_tic_tac_toe.MiptHelloSpringTicTacToeApplication'
+}
+
+tasks.register('runTestDataInitializer') {
+    group = 'application'
+    description = 'Sends POST requests to /api/messages to seed test data.'
+
+    doLast {
+        def url = 'http://localhost:8080/api/messages'
+        println "Seeding test data to ${url} ..."
+
+        def payloads = [
+                '{"content":"Hello #1","username":"alice"}',
+                '{"content":"Hello #2","username":"bob"}',
+                '{"content":"Hello #3","username":"alice"}',
+                '{"content":"Hello #4","username":"carol"}',
+                '{"content":"Hello #5","username":"dave"}',
+                '{"content":"Hello #6","username":"alice"}',
+                '{"content":"Hello #7","username":"bob"}',
+                '{"content":"Hello #8","username":"carol"}',
+                '{"content":"Hello #9","username":"dave"}',
+                '{"content":"Hello #10","username":"erin"}'
+        ]
+
+        if (org.gradle.internal.os.OperatingSystem.current().isWindows()) {
+            // PowerShell Invoke-WebRequest for clarity and status inspection
+            def script = String.format('''
+$ErrorActionPreference = 'Stop'
+$url = '%s'
+
+# Quick availability check
+try {
+  Invoke-WebRequest -Method GET -Uri ($url -replace '/messages$', '/messages/optimized') -TimeoutSec 5 | Out-Null
+} catch {
+  Write-Host 'Service is not reachable at' $url
+  Write-Host 'Start the app first: .\\gradlew.bat bootRun'
+  exit 3
+}
+
+$payloads = @(
+  @{ content='Hello #1';  username='alice' },
+  @{ content='Hello #2';  username='bob' },
+  @{ content='Hello #3';  username='alice' },
+  @{ content='Hello #4';  username='carol' },
+  @{ content='Hello #5';  username='dave' },
+  @{ content='Hello #6';  username='alice' },
+  @{ content='Hello #7';  username='bob' },
+  @{ content='Hello #8';  username='carol' },
+  @{ content='Hello #9';  username='dave' },
+  @{ content='Hello #10'; username='erin' }
+)
+
+$ok = 0; $fail = 0
+foreach ($p in $payloads) {
+  try {
+    $json = $p | ConvertTo-Json -Compress
+    $resp = Invoke-WebRequest -Method POST -Uri $url -Body $json -ContentType 'application/json'
+    if ($resp.StatusCode -ge 200 -and $resp.StatusCode -lt 300) {
+      $ok++
+    } else {
+      Write-Host ('HTTP {0} for payload: {1}' -f $resp.StatusCode, $json)
+      $fail++
+    }
+  } catch {
+    Write-Host 'Failed to POST payload:' ($p | ConvertTo-Json -Compress)
+    Write-Host $_.Exception.Message
+    $fail++
+  }
+}
+Write-Host ('Done. Success={0}, Fail={1}' -f $ok, $fail)
+if ($fail -gt 0) { exit 2 } else { exit 0 }
+''', url)
+            exec {
+                commandLine 'powershell', '-NoProfile', '-Command', script
+            }
+        } else {
+            // Bash loop with curl
+            def joined = payloads.collect { p -> "curl -s -o /dev/null -X POST ${url} -H 'Content-Type: application/json' -d '${p}'" }.join(' && ')
+            exec {
+                commandLine 'bash', '-lc', joined
+            }
+            println 'Done.'
+        }
+    }
+}
